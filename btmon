@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+# Exit with error if required environment is not present
+if [ -z "${BTMON_CONFIG}" ] || [ ! -f "${TUNNEL_CONFIG_FILE}" ]; then
+  echo "Envrionment variable BTMON_CONFIG must be provided"
+  exit 1
+fi
+
+# Execute the btmon python script
+./btmon/btmon.py -c ${BTMON_CONFIG}
