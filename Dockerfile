@@ -23,4 +23,4 @@ ADD . /opt/btmon
 VOLUME ["/etc/bind", "/var/lib/bind", "/var/run/named"]
 
 # Define the command script.
-CMD ["/bin/sh", "-c", "/opt/btmon/btmon"]
+CMD ["/bin/sh", "-c", "./btmon"]
