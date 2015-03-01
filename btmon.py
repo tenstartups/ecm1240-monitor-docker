@@ -1,14 +1,14 @@
 #!/usr/bin/python -u
-__version__ = '3.0.7'
-'''Data collector/processor for Brultech monitoring devices.
+__version__ = '3.0.8'
+"""Data collector/processor for Brultech monitoring devices.
 
 Collect data from Brultech ECM-1240, ECM-1220, and GEM power monitors.  Print
 the data, save the data to database, or upload the data to a server.
 
 Includes support for uploading to the following services:
-  * MyEnerSave/Bidgely   * SmartEnergyGroups   * pachube/cosm   * WattzOn
-  * PlotWatt             * PeoplePower         * thingspeak     * Eragy
-  * emoncms
+  * MyEnerSave     * SmartEnergyGroups   * xively         * WattzOn
+  * PlotWatt       * PeoplePower         * thingspeak     * Eragy
+  * emoncms        * Wattvision          * PVOutput       * Bidgely
 
 Thanks to:
   Amit Snyderman <amit@amitsnyderman.com>
@@ -17,8 +17,11 @@ Thanks to:
   brian jackson [http://fivejacksons.com/brian/]
   Marc MERLIN <marc_soft@merlins.org> - http://marc.merlins.org/
   Ben <ben@brultech.com>
+  Eric Sandeen
+  Mark Lennox
+  Graham Allan
 
-Copyright 2012 Matthew Wall, all rights reserved
+Copyright 2012-2015 Matthew Wall, all rights reserved
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -270,7 +273,7 @@ pw_api_key=XXXXXXXXXXXXXXXX
 pw_map=399999_ch1,1000,399999_ch2,1001
 
 
-EnerSave/Bidgely Configuration:
+EnerSave Configuration (deprecated as of 2014 - use Bidgley instead):
 
 1) create an account
 2) obtain a token
@@ -302,6 +305,49 @@ For example, via configuration file:
 [enersave]
 es_token=XXX
 es_map=399999_ch1,kitchen,,399999_ch2,solar array,1,399999_aux1,,
+
+
+Bidgely Configuration:
+
+1) Choose "Get Started" at http://www.bidgely.com.
+2) Select your zip code, etc.
+3) Choose any monitor type during signup; "Brultech ECM-1240" is fine
+4) Enter your email and password to create your accoun
+5) Choose "Start Setup" then "Connect Energy Monitor"
+6) Choose "I have a different Energy Monitor"
+7) Choose "Bidgely API" from the list, and "Connect this monitor"
+8) Choose "I have downloaded the API document"
+9) Note your Upload URL and *SAVE IT* - you cant find it again
+10) Add the upload URL to your config file by_url= parameter
+11) Click "Connect to Bidgely" and start btmon.
+
+Define labels for ECM channels as a comma-delimited list of tuples.  Each
+tuple contains an id, description, type.  If no map is specified, data from
+all channels will be uploaded, generic labels will be assigned, and the type
+for each channel will default to "load."
+
+Bidgely defines the following types:
+
+   0 - load                   (total consumption on site)
+   1 - generation             (total generation on site)
+   2 - net metering           (net consumption + generation for all circuits)
+  10 - standalone load (DFLT) (subset of total load, i.e. single circuit)
+  11 - standalone generation  (subset of total generation, i.e. single circuit)
+
+Note that types 0, 1, and 2 should each only be assigned to one circuit
+in the map.  Types 10 and 11 may be assigned to several circuits.
+
+Although type 10 (individual circuit) is the default, you should always define
+one map item with type 0, for total load, to make Bidgely happy.
+
+For this reason, a map is required to use the Bidgely service, and it should
+contain at least one channel of type 0 for total load.
+
+For example, via configuration file:
+
+[bidgely]
+by_url=https://api.bidgely.com/v1/users/TOKEN/homes/1/gateways/1/upload
+by_map=399999_ch1,mains,0,399999_ch2,solar array,1,399999_aux1,hot tub,10,
 
 
 PeoplePower Configuration:
@@ -519,7 +565,7 @@ ts_tokens=399999,12345,399998,12348
 ts_fields=399999_ch1,3,399998_aux5,8
 
 
-Pachube/COSM Configuration:
+Xively/Pachube/COSM Configuration:
 
 1) create an account
 2) obtain API key
@@ -543,7 +589,7 @@ pbe_feed=3000
 Wattvision Configuration:
 
 1) create an account
-2) obtain House ID and Secret Key
+2) obtain API ID, API Key, and Sensor ID
 
 Create account by linking to a google account.
 
@@ -551,7 +597,8 @@ Create a House at the wattvision web site.
 
 Skip the sensor and pairing.
 
-Get the House ID and Secret Key from the API Information section of Settings.
+Get the API ID, API Key, and Sensor ID  from the API Information section of
+Settings.
 
 Wattvision records only a single value - it is designed only for whole-house
 monitoring.  So you must specify which channel is the total energy/power
@@ -559,9 +606,10 @@ reading.
 
 [wattvision]
 wattvision_out=true
-wv_house_id=XXXXX
-wv_secret_key=XXXXXX
-wv_channel=399999_ch1
+wv_api_id = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+wv_api_key = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+wv_sensor_id = XXXXXXXX
+wv_channel = 399999_ch1
 
 
 PVOutput Configuration:
@@ -623,6 +671,16 @@ Please consider the following when upgrading from ecmread.py:
 
 Changelog:
 
+- 3.1.0  07feb15 mwall
+* punt old pachube/cosm url, use xively now
+* ensure poll_interval is integer
+* fix enersave uploader (thanks to Eric Sandeen)
+* fix order of sqlite args
+* miscellaneous sqlite and mysql fixes (thanks to Eric Sandeen and Marc Lennox)
+* added node option for compatibility with emoncms 8.4.x
+* updated support for wattvision api v0.2 (thanks to Eric Sandeen)
+* added support for bidgley api v1.0.1 (thanks to Eric Sandeen)
+
 - 3.0.7  01feb14 mwall
 * use localtime for pvoutput uploads (thanks to Eric Sandeen)
 * better handling of failures when connecting via socket (thanks to Ken Overly)
@@ -678,7 +736,7 @@ Changelog:
 * automatic configuration of database for mysql and sqlite
 * support for multiplexed devices in polling mode
 
-'''
+"""
 __author__ = 'mwall'
 __app__ = 'btmon'
 
@@ -800,7 +858,7 @@ __app__ = 'btmon'
 # TODO: bulk uploads for openenergymonitory, thinkspeak if possible
 # TODO: use row-per-sensor database schema (more future-proof)
 
-MINUTE	= 60
+MINUTE = 60
 SpH = 3600.0
 
 # if set to 1, print out what would be uploaded but do not do the upload.
@@ -843,7 +901,7 @@ DEFAULT_UPLOAD_TIMEOUT = 15
 
 # how often to upload data, in seconds
 # this may be overridden by specific services
-DEFAULT_UPLOAD_PERIOD = 15*MINUTE
+DEFAULT_UPLOAD_PERIOD = 15 * MINUTE
 
 # device types
 DEV_ECM1220 = 'ecm1220'
@@ -893,22 +951,22 @@ IP_DEFAULT_MODE = 'server'
 IP_BUFFER_SIZE = 2048
 
 # database defaults
-DB_HOST          = 'localhost'
-DB_USER          = 'ecmuser'
-DB_PASSWD        = 'ecmpass'
-DB_DATABASE      = 'ecm'
-DB_FILENAME      = 'ecm.db'   # filename for sqlite databases
-DB_INSERT_PERIOD = MINUTE     # how often to record to database, in seconds
-DB_POLL_INTERVAL = 60         # how often to poll the database, in seconds
+DB_HOST = 'localhost'
+DB_USER = 'ecmuser'
+DB_PASSWD = 'ecmpass'
+DB_DATABASE = 'ecm'
+DB_FILENAME = 'ecm.db'     # filename for sqlite databases
+DB_INSERT_PERIOD = MINUTE  # how often to record to database, in seconds
+DB_POLL_INTERVAL = 60      # how often to poll the database, in seconds
 
 # rrd defaults
-RRD_DIR       = 'rrd' # directory in which to put the rrd files
-RRD_STEP      = 10    # how often we get samples from the device, in seconds
+RRD_DIR = 'rrd' # directory in which to put the rrd files
+RRD_STEP = 10   # how often we get samples from the device, in seconds
 RRD_HEARTBEAT = 2 * RRD_STEP  # typically twice the step, in seconds
 # 10s, 5m, 30m, 1h
 # 4d at 10s, 60d at 5m, 365d at 30m, 730d at 1h
 # 2087836 bytes per rrd file - about 90MB for a gem or 20MB for an ecm1240
-RRD_STEPS = [1,18,180,360]
+RRD_STEPS = [1, 18, 180, 360]
 RRD_RESOLUTIONS = [34560, 17280, 17520, 17520]
 # 10s, 1m, 10m, 20m
 # 32h at 10s, 12d at 1m, 121.6d at 10m, 243.3d at 20m
@@ -923,13 +981,13 @@ RRD_POLL_INTERVAL = 120 # how often to poll when rrd is source, in seconds
 # WattzOn defaults
 # the map is a comma-delimited list of channel,meter pairs.  for example:
 #   311111_ch1,living room,311112_ch1,parlor,311112_aux4,kitchen
-WATTZON_API_URL       = 'http://www.wattzon.com/api/2009-01-27/3'
+WATTZON_API_URL = 'http://www.wattzon.com/api/2009-01-27/3'
 WATTZON_UPLOAD_PERIOD = 5 * MINUTE
-WATTZON_TIMEOUT       = 15 # seconds
-WATTZON_MAP     = ''
+WATTZON_TIMEOUT = 15 # seconds
+WATTZON_MAP = ''
 WATTZON_API_KEY = 'apw6v977dl204wrcojdoyyykr'
-WATTZON_USER    = ''
-WATTZON_PASS    = ''
+WATTZON_USER = ''
+WATTZON_PASS = ''
 
 # PlotWatt defaults
 #   https://plotwatt.com/docs/api
@@ -937,105 +995,116 @@ WATTZON_PASS    = ''
 #   sampling as often as possible, no faster than once per second.
 # the map is a comma-delimited list of channel,meter pairs.  for example:
 #   311111_ch1,1234,311112_ch1,1235,311112_aux4,1236
-PLOTWATT_BASE_URL      = 'http://plotwatt.com'
-PLOTWATT_UPLOAD_URL    = '/api/v2/push_readings'
+PLOTWATT_BASE_URL = 'http://plotwatt.com'
+PLOTWATT_UPLOAD_URL = '/api/v2/push_readings'
 PLOTWATT_UPLOAD_PERIOD = MINUTE
-PLOTWATT_TIMEOUT       = 15 # seconds
-PLOTWATT_MAP           = ''
-PLOTWATT_HOUSE_ID      = ''
-PLOTWATT_API_KEY       = ''
+PLOTWATT_TIMEOUT = 15 # seconds
+PLOTWATT_MAP = ''
+PLOTWATT_HOUSE_ID = ''
+PLOTWATT_API_KEY = ''
 
-# EnerSave/Bidgely defaults
+# EnerSave defaults
 #   Minimum upload interval is 60 seconds.
 #   Recommended sampling interval is 2 to 30 seconds.
 # the map is a comma-delimited list of channel,description,type tuples
 #   311111_ch1,living room,2,311112_ch2,solar,1,311112_aux4,kitchen,2
-ES_URL           = 'http://data.myenersave.com/fetcher/data'
+ES_URL = 'http://data.myenersave.com/fetcher/data'
 ES_UPLOAD_PERIOD = 5 * MINUTE
-ES_TIMEOUT       = 60 # seconds
-ES_TOKEN         = ''
-ES_MAP           = ''
-ES_DEFAULT_TYPE  = 2
+ES_TIMEOUT = 60 # seconds
+ES_TOKEN = ''
+ES_MAP = ''
+ES_DEFAULT_TYPE = 2
+
+# Bidgely defaults
+#   Minimum upload interval is 60 seconds.
+#   Recommended sampling interval is 2 to 30 seconds.
+# the map is a comma-delimited list of channel,description,type tuples
+#   311111_ch1,living room,2,311112_ch2,solar,1,311112_aux4,kitchen,2
+BY_UPLOAD_PERIOD = 60 # seconds
+BY_TIMEOUT = 60 # seconds
+BY_MAP = ''
+BY_DEFAULT_TYPE  = 10
 
 # PeoplePower defaults
 #   http://developer.peoplepowerco.com/docs
 #   Recommended upload period is 15 minutes.
 # the map is a comma-delimited list of channel,meter pairs.  for example:
 #   311111_ch1,1111c1,311112_ch1,1112c1,311112_aux4,1112a4
-PPCO_URL            = 'https://esp.peoplepowerco.com:8443/deviceio/ml'
-PPCO_UPLOAD_PERIOD  = 15 * MINUTE
-PPCO_TIMEOUT        = 15 # seconds
-PPCO_TOKEN          = ''
-PPCO_HUBID          = 1
-PPCO_MAP            = ''
-PPCO_FIRST_NONCE    = 1
-PPCO_DEVICE_TYPE    = 1005
-PPCO_ADD_DEVICES    = True # set to false to skip setup if setup already done
+PPCO_URL = 'https://esp.peoplepowerco.com:8443/deviceio/ml'
+PPCO_UPLOAD_PERIOD = 15 * MINUTE
+PPCO_TIMEOUT = 15 # seconds
+PPCO_TOKEN = ''
+PPCO_HUBID = 1
+PPCO_MAP = ''
+PPCO_FIRST_NONCE = 1
+PPCO_DEVICE_TYPE = 1005
+PPCO_ADD_DEVICES = True # set to false to skip setup if setup already done
 
 # eragy defaults
-ERAGY_URL           = 'http://d.myeragy.com/energyremote.aspx'
+ERAGY_URL = 'http://d.myeragy.com/energyremote.aspx'
 ERAGY_UPLOAD_PERIOD = MINUTE
-ERAGY_TIMEOUT       = 15 # seconds
-ERAGY_GATEWAY_ID    = ''
-ERAGY_TOKEN         = ''
+ERAGY_TIMEOUT = 15 # seconds
+ERAGY_GATEWAY_ID = ''
+ERAGY_TOKEN = ''
 
 # smart energy groups defaults
 #   http://smartenergygroups.com/api
 # the map is a comma-delimited list of channel,meter pairs.  for example:
 #   311111_ch1,living room,311112_ch1,parlor,311112_aux4,kitchen
-SEG_URL           = 'http://api.smartenergygroups.com/api_sites/stream'
+SEG_URL = 'http://api.smartenergygroups.com/api_sites/stream'
 SEG_UPLOAD_PERIOD = MINUTE
-SEG_TIMEOUT       = 15 # seconds
-SEG_TOKEN         = ''
-SEG_MAP           = ''
+SEG_TIMEOUT = 15 # seconds
+SEG_TOKEN = ''
+SEG_MAP = ''
 
 # thingspeak defaults
 #   http://community.thingspeak.com/documentation/api/
 #   Uploads are limited to no more than every 15 seconds per channel.
-TS_URL           = 'http://api.thingspeak.com/update'
+TS_URL = 'http://api.thingspeak.com/update'
 TS_UPLOAD_PERIOD = MINUTE
-TS_TIMEOUT       = 15 # seconds
-TS_TOKENS        = ''
-TS_FIELDS        = ''
+TS_TIMEOUT = 15 # seconds
+TS_TOKENS = ''
+TS_FIELDS = ''
 
 # pachube/cosm defaults
 #   https://cosm.com/docs/v2/
-PBE_URL           = 'http://api.pachube.com/v2/feeds'
+PBE_URL = 'http://api.xively.com/v2/feeds'
 PBE_UPLOAD_PERIOD = MINUTE
-PBE_TIMEOUT       = 15 # seconds
-PBE_TOKEN         = ''
-PBE_FEED          = ''
+PBE_TIMEOUT = 15 # seconds
+PBE_TOKEN = ''
+PBE_FEED = ''
 
 # open energy monitor emoncms defaults
-OEM_URL           = 'https://localhost/emoncms3/api/post'
+OEM_URL = 'https://localhost/emoncms/api/post'
 OEM_UPLOAD_PERIOD = MINUTE
-OEM_TIMEOUT       = 15 # seconds
-OEM_TOKEN         = ''
+OEM_TIMEOUT = 15 # seconds
+OEM_TOKEN = ''
+OEM_NODE = None
 
-# wattvision defaults
-#   http://www.wattvision.com/info/api
+# wattvision v0.2 defaults
+#   https://www.wattvision.com/usr/api
 #   post as fast as every 15 seconds or as slow as every 20 minutes.
-WV_URL            = 'http://www.wattvision.com/api'
-WV_UPLOAD_PERIOD  = 120
-WV_TIMEOUT        = 15 # seconds
-WV_API_VERSION    = '0.1'
-WV_HOUSE_ID       = ''
-WV_SECRET_KEY     = ''
-WV_CHANNEL        = ''
+WV_URL = 'http://www.wattvision.com/api/v0.2/elec'
+WV_UPLOAD_PERIOD = 120
+WV_TIMEOUT = 15 # seconds
+WV_API_ID = ''
+WV_API_KEY = ''
+WV_SENSOR_ID = ''
+WV_CHANNEL = ''
 
 # pvoutput defaults
 #   http://www.pvoutput.org/help.html
 #   using the addstatus interface
 #   send a sample every 5 to 15 minutes
 #   use the cumulative flag for energy
-PVO_URL           = 'http://pvoutput.org/service/r2/addstatus.jsp'
+PVO_URL = 'http://pvoutput.org/service/r2/addstatus.jsp'
 PVO_UPLOAD_PERIOD = 300
-PVO_TIMEOUT       = 15 # seconds
-PVO_API_KEY       = ''
-PVO_SYSTEM_ID     = ''
-PVO_GEN_CHANNEL   = ''
-PVO_CON_CHANNEL   = ''
-PVO_TEMP_CHANNEL  = ''
+PVO_TIMEOUT = 15 # seconds
+PVO_API_KEY = ''
+PVO_SYSTEM_ID = ''
+PVO_GEN_CHANNEL = ''
+PVO_CON_CHANNEL = ''
+PVO_TEMP_CHANNEL = ''
 
 
 import base64
@@ -1056,22 +1125,22 @@ warnings.filterwarnings('ignore', category=DeprecationWarning) # MySQLdb in 2.6
 # External (Optional) Dependencies
 try:
     import serial
-except Exception, e:
+except ImportError:
     serial = None
 
 try:
     import MySQLdb
-except Exception, e:
+except ImportError:
     MySQLdb = None
 
 try:
     from sqlite3 import dbapi2 as sqlite
-except Exception, e:
+except ImportError:
     sqlite = None
 
 try:
     import rrdtool
-except Exception, e:
+except ImportError:
     rrdtool = None
 
 try:
@@ -1079,15 +1148,15 @@ try:
     # XXX: maintain compatibility w/ json module
     setattr(json, 'dumps', json.encode)
     setattr(json, 'loads', json.decode)
-except Exception, e:
+except ImportError:
     try:
         import simplejson as json
-    except Exception, e:
+    except ImportError:
         import json
 
 try:
     import ConfigParser
-except Exception, e:
+except ImportError:
     ConfigParser = None
 
 
@@ -1166,7 +1235,7 @@ def getgmtime():
     return int(time.time())
 
 def cleanvalue(s):
-    '''ensure that values read from configuration file are sane'''
+    """ensure that values read from configuration file are sane"""
     s = s.replace('\n', '')    # we never want newlines
     s = s.replace('\r', '')    # or carriage returns
     if s.lower() == 'false':
@@ -1176,15 +1245,15 @@ def cleanvalue(s):
     return s
 
 def pairs2dict(s):
-    '''convert comma-delimited name,value pairs to a dictionary'''
+    """convert comma-delimited name,value pairs to a dictionary"""
     items = s.split(',')
-    m = {}
+    m = dict()
     for k, v in zip(items[::2], items[1::2]):
         m[k] = v
     return m
 
 def obfuscate_serial(sn):
-    '''obfuscate a serial number - expose only the last 3 digits'''
+    """obfuscate a serial number - expose only the last 3 digits"""
     if OBFUSCATE_SERIALS:
         n = len(sn)
         s = 'XXX%s' % sn[n-3:n]
@@ -1192,8 +1261,8 @@ def obfuscate_serial(sn):
         s = sn
     return s
 
-def mklabel(serial, channel):
-    return '%s_%s' % (serial, channel)
+def mklabel(sn, channel):
+    return '%s_%s' % (sn, channel)
 
 def mkfn(dir, label):
     label = label.replace(' ','_')
@@ -1209,8 +1278,8 @@ class BaseDevice(object):
     def __init__(self):
         pass
 
-    def extract_identifiers(self, str):
-        return str.split(',')
+    def extract_identifiers(self, s):
+        return s.split(',')
 
     def numpackets(self, packetformat):
         return 1
@@ -1224,15 +1293,15 @@ class ECM1220Device(BaseDevice):
         self.CFM_BYTE = chr(0xfc)
 
     # ensure that each identifier is one of fc, fd, fe, or ff
-    def check_identifiers(self, str):
-        for d in str.split(','):
+    def check_identifiers(self, s):
+        for d in s.split(','):
             if not (d == 'fc' or d == 'fd' or d == 'fe' or d == 'ff'):
-                raise Exception("bogus device '%s' in list '%s'" % (d, str))
+                raise Exception("bogus device '%s' in list '%s'" % (d, s))
 
     # each ecm1220 responds to the byte fc (and others?)
     # each ecm1240 responds to one of fc, fd, fe, or ff
-    def requestpacket(self, com, id='fc'):
-        com.send(chr(int(id,16)))
+    def requestpacket(self, com, ecmid='fc'):
+        com.send(chr(int(ecmid, 16)))
         self._confirm(com)
         com.send('SPK')
         self._confirm(com)
@@ -1260,18 +1329,18 @@ class GEMDevice(BaseDevice):
         self.DEFAULT_PACKET_FORMAT = PF_GEM48PTBIN
 
     # ensure that each identifier is a 5 digit string
-    def check_identifiers(self, str):
-        for d in str.split(','):
+    def check_identifiers(self, s):
+        for d in s.split(','):
             if len(d) > 0 and not len(d) == 5:
-                raise Exception("bogus device '%s' in list '%s'" % (d, str))
+                raise Exception("bogus device '%s' in list '%s'" % (d, s))
 
     # use the NMBXXXXX identifier for specific serial numbers.  based on
     # section 8 of 'GEM Commands and Packet Format6.doc' from october 2012.
     # multiplexed devices work only with GEM com firmware 1.61 or later.
-    def requestpacket(self, com, id=''):
+    def requestpacket(self, com, gemid=''):
         idstr = ''
-        if len(id) > 0:
-            idstr = 'NMB%s' % id
+        if len(gemid) > 0:
+            idstr = 'NMB%s' % gemid
         com.send('^^^%sAPISPK' % idstr)
 
     # when sending data in the ecm1240 binary format, the GEM sends 5 virtual
@@ -1299,25 +1368,25 @@ class BasePacket(object):
         self.DATA_BYTES_LENGTH = 0 # must be defined by derived class
         self.PACKET_ID         = 0 # must be defined by derived class
 
-    def _convert(self, bytes):
-        return reduce(lambda x,y:x+y[0] * (256**y[1]), zip(bytes,xrange(len(bytes))),0)
+    def _convert(self, b):
+        return reduce(lambda x,y:x+y[0] * (256**y[1]), zip(b, xrange(len(b))), 0)
 
     def _serialraw(self, packet):
-        '''extract the serial number from a raw packet'''
+        """extract the serial number from a raw packet"""
         return '0000'
 
     def _getserial(self, packet):
-        '''get the serial number from a compiled packet'''
+        """get the serial number from a compiled packet"""
         return self._fmtserial(packet['unit_id'], packet['ser_no'])
 
-    def _fmtserial(self, id, sn):
-        return '%03d%05d' % (id, sn)
+    def _fmtserial(self, devid, sn):
+        return '%03d%05d' % (devid, sn)
 
-    def _calculate_checksum(self, packet, id):
-        '''calculate the packet checksum'''
+    def _calculate_checksum(self, packet, devid):
+        """calculate the packet checksum"""
         checksum = self.START_HEADER0
         checksum += self.START_HEADER1
-        checksum += id
+        checksum += devid
         checksum += sum(packet)
         checksum += self.END_HEADER0
         checksum += self.END_HEADER1
@@ -1327,10 +1396,10 @@ class BasePacket(object):
         if not data:
             raise EmptyReadError("expected %s %s, got nothing" %
                                  (label, hex(evalue)))
-        byte = ord(data)
-        if byte != evalue:
+        b = ord(data)
+        if b != evalue:
             raise ReadError("expected %s %s, got %s" %
-                            (label, hex(evalue), hex(byte)))
+                            (label, hex(evalue), hex(b)))
 
     # for now (oct2012), this is the read method that we use
     def _read1(self, collector, pktlen, pktid):
@@ -1344,7 +1413,7 @@ class BasePacket(object):
 
         packet = ''
         while len(packet) < pktlen:
-            data = collector.readbytes(pktlen-len(packet))
+            data = collector.readbytes(pktlen - len(packet))
             if not data: # No data left
                 raise ReadError('no data after %d bytes' % len(packet))
             packet += data
@@ -1363,10 +1432,10 @@ class BasePacket(object):
         # if the checksum is incorrect, ignore the packet
         checksum = self._calculate_checksum(pkt, pktid)
         data = collector.readbytes(1)
-        byte = ord(data)
-        if byte != checksum:
+        b = ord(data)
+        if b != checksum:
             raise ReadError("bad checksum for %s: expected %s, got %s" %
-                            (self._serialraw(packet),hex(checksum),hex(byte)))
+                            (self._serialraw(packet), hex(checksum), hex(b)))
 
         return [pkt]
 
@@ -1381,7 +1450,7 @@ class BasePacket(object):
     # Polarized watt counter only increase if the current is positive
     # Every polarized count registers as an absolute count
     def _calc_pe(self, tag, ds, ret, prev):
-        '''calculate power and energy for a 5-byte polarized counter'''
+        """calculate power and energy for a 5-byte polarized counter"""
 
         # FIXME: there is a corner case here when the absolute watt-second
         # counter wraps but the polarized watt-second counter does not, or
@@ -1430,7 +1499,7 @@ class BasePacket(object):
         ret[tag+'_dwh'] = ret[tag+'_wh'] - prev_dwh
 
     def _calc_pe_4byte(self, tag, ds, ret, prev):
-        '''calculate power and energy for a 4-byte non-polarized counter'''
+        """calculate power and energy for a 4-byte non-polarized counter"""
 
         dws = ret[tag+'_ws'] - prev[tag+'_ws']
         if ret[tag+'_ws'] < prev[tag+'_ws']:
@@ -1441,20 +1510,20 @@ class BasePacket(object):
         ret[tag+'_wh'] = ret[tag+'_ws'] / SpH
         ret[tag+'_dwh'] = dws / SpH
 
-    def channels(self, filter):
-        '''return a list of data sources for this packet type'''
+    def channels(self, fltr):
+        """return a list of data sources for this packet type"""
         return []
 
     def read(self, collector):
-        '''read data from collector, return an array of raw packets'''
+        """read data from collector, return an array of raw packets"""
         return self._read1(collector, self.DATA_BYTES_LENGTH, self.PACKET_ID)
 
     def compile(self, packet):
-        '''convert a raw packet into a compiled packet'''
+        """convert a raw packet into a compiled packet"""
         pass
 
     def calculate(self, newer, older):
-        '''calculate difference between two packets'''
+        """calculate difference between two packets"""
         pass
 
     def printPacket(self, packet):
@@ -1464,44 +1533,44 @@ class ECMBinaryPacket(BasePacket):
     def __init__(self):
         BasePacket.__init__(self)
 
-    def _getresetcounter(self, byte):
-        '''extract the reset counter from a byte'''
-        return byte & 0x07 # 0b00000111 is not recognized by python 2.5
+    def _getresetcounter(self, b):
+        """extract the reset counter from a byte"""
+        return b & 0x07 # 0b00000111 is not recognized by python 2.5
 
     def _serialraw(self, packet):
         sn1 = ord(packet[26:27])
         sn2 = ord(packet[27:28]) * 256
         id1 = ord(packet[29:30])
-        return self._fmtserial(id1, sn1+sn2)
+        return self._fmtserial(id1, sn1 + sn2)
 
-    def _fmtserial(self, id, sn):
-        '''ECM serial numbers are 6 characters - unit id then serial'''
-        s = '%d' % id
+    def _fmtserial(self, ecmid, sn):
+        """ECM serial numbers are 6 characters - unit id then serial"""
+        s = '%d' % ecmid
         return s[-1:] + '%05d' % sn
 
 class ECM1220BinaryPacket(ECMBinaryPacket):
     def __init__(self):
         ECMBinaryPacket.__init__(self)
         self.NAME = PF_ECM1220BIN
-        self.PACKET_ID         = 1
+        self.PACKET_ID = 1
         self.DATA_BYTES_LENGTH = 37  # does not include the start/end headers
         self.NUM_CHAN = 2
 
-    def channels(self, filter):
+    def channels(self, fltr):
         c = []
-        if filter == FILTER_PE_LABELS:
+        if fltr == FILTER_PE_LABELS:
             c = ['ch1', 'ch2']
-        elif filter == FILTER_POWER:
+        elif fltr == FILTER_POWER:
             c = ['ch1_w', 'ch2_w']
-        elif filter == FILTER_ENERGY:
+        elif fltr == FILTER_ENERGY:
             c = ['ch1_wh', 'ch2_wh']
-        elif filter == FILTER_DB_SCHEMA_COUNTERS:
+        elif fltr == FILTER_DB_SCHEMA_COUNTERS:
             c = ['volts', 'ch1_a', 'ch2_a', 'ch1_aws', 'ch2_aws', 'ch1_pws', 'ch2_pws']
         return c
 
     def compile(self, rpkt):
-        '''compile a raw packet into a compiled packet'''
-        cpkt = {}
+        """compile a raw packet into a compiled packet"""
+        cpkt = dict()
 
         # Voltage Data (2 bytes)
         cpkt['volts'] = 0.1 * self._convert(rpkt[1::-1])
@@ -1541,7 +1610,7 @@ class ECM1220BinaryPacket(ECMBinaryPacket):
         return cpkt
 
     def calculate(self, now, prev):
-        '''calculate watts and watt-hours from watt-second counters'''
+        """calculate watts and watt-hours from watt-second counters"""
 
         # if reset counter has changed since last packet, skip the calculation
         c0 = self._getresetcounter(prev['flag'])
@@ -1562,9 +1631,9 @@ class ECM1220BinaryPacket(ECMBinaryPacket):
         print ts+": Serial: %s" % p['serial']
         print ts+": Counter: %d" % self._getresetcounter(p['flag'])
         print ts+": Voltage:           %9.2fV" % p['volts']
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             print ts+": Ch%d Current:        %9.2fA" % (x, p['ch%d_a' % x])
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             print ts+": Ch%d Watts:          % 13.6fKWh (% 5dW)" % (x, p['ch%d_wh' % x]/1000, p['ch%d_w' % x])
             print ts+": Ch%d Positive Watts: % 13.6fKWh (% 5dW)" % (x, p['ch%d_pwh' % x]/1000, p['ch%d_pw' % x])
             print ts+": Ch%d Negative Watts: % 13.6fKWh (% 5dW)" % (x, p['ch%d_nwh' % x]/1000, p['ch%d_nw' % x])
@@ -1574,24 +1643,24 @@ class ECM1240BinaryPacket(ECM1220BinaryPacket):
     def __init__(self):
         ECM1220BinaryPacket.__init__(self)
         self.NAME = PF_ECM1240BIN
-        self.PACKET_ID         = 3
+        self.PACKET_ID = 3
         self.DATA_BYTES_LENGTH = 59  # does not include the start/end headers
         self.NUM_CHAN = 2
         self.NUM_AUX = 5
 
-    def channels(self, filter):
+    def channels(self, fltr):
         c = []
-        if filter == FILTER_PE_LABELS:
+        if fltr == FILTER_PE_LABELS:
             c = ['ch1', 'ch2', 'aux1', 'aux2', 'aux3', 'aux4', 'aux5']
-        elif filter == FILTER_POWER:
+        elif fltr == FILTER_POWER:
             c = ['ch1_w', 'ch2_w', 'aux1_w', 'aux2_w', 'aux3_w', 'aux4_w', 'aux5_w']
-        elif filter == FILTER_ENERGY:
+        elif fltr == FILTER_ENERGY:
             c = ['ch1_wh', 'ch2_wh', 'aux1_wh', 'aux2_wh', 'aux3_wh', 'aux4_wh', 'aux5_wh']
-        elif filter == FILTER_DB_SCHEMA_ECMREAD:
+        elif fltr == FILTER_DB_SCHEMA_ECMREAD:
             c = ['volts', 'ch1_amps', 'ch2_amps', 'ch1_w', 'ch2_w', 'aux1_w', 'aux2_w', 'aux3_w', 'aux4_w', 'aux5_w']
-        elif filter == FILTER_DB_SCHEMA_ECMREADEXT:
+        elif fltr == FILTER_DB_SCHEMA_ECMREADEXT:
             c = ['volts', 'ch1_a', 'ch2_a', 'ch1_w', 'ch2_w', 'aux1_w', 'aux2_w', 'aux3_w', 'aux4_w', 'aux5_w', 'ch1_wh', 'ch2_wh', 'aux1_wh', 'aux2_wh', 'aux3_wh', 'aux4_wh', 'aux5_wh', 'ch1_whd', 'ch2_whd', 'aux1_whd', 'aux2_whd', 'aux3_whd', 'aux4_whd', 'aux5_whd', 'ch1_pw', 'ch1_nw', 'ch2_pw', 'ch2_nw', 'ch1_pwh', 'ch1_nwh', 'ch2_pwh', 'ch2_nwh']
-        elif filter == FILTER_DB_SCHEMA_COUNTERS:
+        elif fltr == FILTER_DB_SCHEMA_COUNTERS:
             c = ['volts', 'ch1_a', 'ch2_a', 'ch1_aws', 'ch2_aws', 'ch1_pws', 'ch2_pws', 'aux1_ws', 'aux2_ws', 'aux3_ws', 'aux4_ws', 'aux5_ws', 'aux5_volts']
         return c
 
@@ -1627,13 +1696,13 @@ class ECM1240BinaryPacket(ECM1220BinaryPacket):
         print ts+": Serial: %s" % p['serial']
         print ts+": Counter: %d" % self._getresetcounter(p['flag'])
         print ts+": Voltage:            %9.2fV" % p['volts']
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             print ts+": Ch%d Current:        %9.2fA" % (x, p['ch%d_a' % x])
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             print ts+": Ch%d Watts:          % 13.6fKWh (% 5dW)" % (x, p['ch%d_wh' % x]/1000, p['ch%d_w' % x])
             print ts+": Ch%d Positive Watts: % 13.6fKWh (% 5dW)" % (x, p['ch%d_pwh' % x]/1000, p['ch%d_pw' % x])
             print ts+": Ch%d Negative Watts: % 13.6fKWh (% 5dW)" % (x, p['ch%d_nwh' % x]/1000, p['ch%d_nw' % x])
-        for x in range(1,self.NUM_AUX+1):
+        for x in range(1, self.NUM_AUX + 1):
             print ts+": Aux%d Watts:         % 13.6fKWh (% 5dW)" % (x, p['aux%d_wh' % x]/1000, p['aux%d_w' % x])
 
 
@@ -1652,19 +1721,19 @@ class GEM48PBinaryPacket(BasePacket):
         sn1 = ord(packet[481:482])
         sn2 = ord(packet[482:483]) * 256
         id1 = ord(packet[485:486])
-        return self._fmtserial(id1, sn1+sn2)
+        return self._fmtserial(id1, sn1 + sn2)
 
-    def _fmtserial(self, id, sn):
-        '''GEM serial numbers are 8 characters - unit id then serial'''
-        return "%03d%05d" % (id, sn)
+    def _fmtserial(self, gemid, sn):
+        """GEM serial numbers are 8 characters - unit id then serial"""
+        return "%03d%05d" % (gemid, sn)
 
-    def _mktemperature(self, bytes):
+    def _mktemperature(self, b):
         # firmware 1.61 and older use this for temperature
-#        t = 0.5 * self._convert(bytes)
+#        t = 0.5 * self._convert(b)
 
         # firmware later than 1.61 uses this for temperature
-        t = 0.5 * ((bytes[1] & 0x7f) << 8 | bytes[0])
-        if (bytes[1] >> 7) != 0:
+        t = 0.5 * ((b[1] & 0x7f) << 8 | b[0])
+        if (b[1] >> 7) != 0:
             t = -t
 
         # check for bogus values that indicate no sensor
@@ -1674,42 +1743,42 @@ class GEM48PBinaryPacket(BasePacket):
 
     # for now we emit only the first 32 channels.  the additional 16 are not
     # yet accessible.
-    def channels(self, filter):
+    def channels(self, fltr):
         c = []
-        if filter == FILTER_PE_LABELS:
-            for x in range(1,self.NUM_CHAN+1):
+        if fltr == FILTER_PE_LABELS:
+            for x in range(1, self.NUM_CHAN + 1):
                 c.append('ch%d' % x)
-        elif filter == FILTER_POWER:
-            for x in range(1,self.NUM_CHAN+1):
+        elif fltr == FILTER_POWER:
+            for x in range(1, self.NUM_CHAN + 1):
                 c.append('ch%d_w' % x)
-        elif filter == FILTER_ENERGY:
-            for x in range(1,self.NUM_CHAN+1):
+        elif fltr == FILTER_ENERGY:
+            for x in range(1, self.NUM_CHAN + 1):
                 c.append('ch%d_wh' % x)
-        elif filter == FILTER_PULSE:
-            for x in range(1,self.NUM_PULSE+1):
+        elif fltr == FILTER_PULSE:
+            for x in range(1, self.NUM_PULSE + 1):
                 c.append('p%d' % x)
-        elif filter == FILTER_SENSOR:
-            for x in range(1,self.NUM_SENSE+1):
+        elif fltr == FILTER_SENSOR:
+            for x in range(1, self.NUM_SENSE + 1):
                 c.append('t%d' % x)
-        elif filter == FILTER_DB_SCHEMA_COUNTERS:
+        elif fltr == FILTER_DB_SCHEMA_COUNTERS:
             c = ['volts']
-            for x in range(1,self.NUM_CHAN+1):
+            for x in range(1, self.NUM_CHAN + 1):
                 c.append('ch%d_aws' % x)
                 c.append('ch%d_pws' % x)
-            for x in range(1,self.NUM_PULSE+1):
+            for x in range(1, self.NUM_PULSE + 1):
                 c.append('p%d' % x)
-            for x in range(1,self.NUM_SENSE+1):
+            for x in range(1, self.NUM_SENSE + 1):
                 c.append('t%d' % x)
         return c
 
     def compile(self, rpkt):
-        cpkt = {}
+        cpkt = dict()
 
         # Voltage Data (2 bytes)
         cpkt['volts'] = 0.1 * self._convert(rpkt[1::-1])
 
         # Absolute/Polarized Watt-Second Counters (5 bytes each)
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN+1):
             cpkt['ch%d_aws' % x] = self._convert(rpkt[2+5*(x-1):2+5*x])
             cpkt['ch%d_pws' % x] = self._convert(rpkt[242+5*(x-1):242+5*x])
 
@@ -1727,14 +1796,14 @@ class GEM48PBinaryPacket(BasePacket):
         cpkt['secs'] = self._convert(rpkt[582:585])
 
         # Pulse Counters (3 bytes each)
-        for x in range(1,self.NUM_PULSE+1):
+        for x in range(1, self.NUM_PULSE + 1):
             cpkt['p%d' % x] = self._convert(rpkt[585+3*(x-1):585+3*x])
 
         # One-Wire Sensors (2 bytes each)
         # the 0.5 multiplier is for DS18B20 sensors
 #        for x in range(1,self.NUM_SENSE+1):
 #            cpkt['t%d' % x] = 0.5 * self._convert(rpkt[597+2*(x-1):597+2*x])
-        for x in range(1,self.NUM_SENSE+1):   
+        for x in range(1, self.NUM_SENSE + 1):
             cpkt['t%d' % x] = self._mktemperature(rpkt[597+2*(x-1):597+2*x])
 
         # Spare (2 bytes)
@@ -1748,21 +1817,21 @@ class GEM48PBinaryPacket(BasePacket):
         return cpkt
 
     def calculate(self, now, prev):
-        '''calculate watts and watt-hours from watt-second counters'''
+        """calculate watts and watt-hours from watt-second counters"""
 
         # FIXME: check the reset flag once that is supported in gem packets
         # until then, if counter drops we assume it is due to a reset
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             tag = 'ch%d' % x
-            c0 = prev[tag+'_aws']
-            c1 = now[tag+'_aws']
+            c0 = prev[tag + '_aws']
+            c1 = now[tag + '_aws']
             if c1 < c0:
                 raise CounterResetError("channel: %s old: %d new: %d" %
                                         (tag, c0, c1))
 
         ret = now
         ds = self._calc_secs(ret, prev)
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             tag = 'ch%d' % x
             self._calc_pe(tag, ds, ret, prev)
 
@@ -1773,11 +1842,11 @@ class GEM48PBinaryPacket(BasePacket):
 
         print ts+": Serial: %s" % p['serial']
         print ts+": Voltage: % 6.2fV" % p['volts']
-        for x in range(1,self.NUM_CHAN+1):
+        for x in range(1, self.NUM_CHAN + 1):
             print ts+": Ch%02d: % 13.6fKWh (% 5dW)" % (x, p['ch%d_wh' % x]/1000, p['ch%d_w' % x])
-        for x in range(1,self.NUM_PULSE+1):
+        for x in range(1, self.NUM_PULSE + 1):
             print ts+": p%d: % 15d" % (x, p['p%d' % x])
-        for x in range(1,self.NUM_SENSE+1):
+        for x in range(1, self.NUM_SENSE + 1):
             print ts+": t%d: % 15.6f" % (x, p['t%d' % x])
 
 
@@ -1820,7 +1889,7 @@ class BaseSchema(object):
         return ''
 
     def db2pkt(self, row):
-        return {}
+        return dict()
 
     def getinsertsql(self, packet):
         return ''
@@ -1852,7 +1921,7 @@ class CountersSchema(BaseSchema):
         return ''.join(sql)
 
     def db2pkt(self, row):
-        pkt = row
+        pkt = dict(row)
         pkt['flag'] = 0 # fake it
         return pkt
 
@@ -1887,7 +1956,7 @@ class ECMReadSchema(BaseSchema):
         return ''.join(sql)
 
     def db2pkt(self, row):
-        pkt = {}
+        pkt = dict()
         for key in row.keys():
             pktkey = key
             if key.endswith('_amps'):
@@ -1929,7 +1998,7 @@ class ECMReadExtSchema(BaseSchema):
         return ''.join(sql)
 
     def db2pkt(self, row):
-        pkt = {}
+        pkt = dict()
         for key in row.keys():
             pktkey = key
             if key.endswith('_whd'):
@@ -1974,8 +2043,8 @@ class Monitor(object):
     def process(self):
         dbgmsg('buffer info:')
         for sn in self.packet_collector.packet_buffer.getkeys():
-            dbgmsg('  %s: %3d of %3d (%d)' % (
-                    sn,
+            dbgmsg('  %s: %3d of %3d (%d)' %
+                   (sn,
                     self.packet_collector.packet_buffer.size(sn),
                     self.packet_collector.packet_buffer.maxsize,
                     self.packet_collector.packet_buffer.lastmod(sn)))
@@ -2091,28 +2160,28 @@ class BufferedDataCollector(object):
     # to abort prematurely.  for each device, permit a limited number of
     # failures before bailing out.
     def _pollingread(self, packet_format, device_list):
-        for id in device_list:
+        for did in device_list:
             havedata = False
             ntries = 0
             while ntries < POLL_RETRIES and not havedata:
                 ntries += 1
                 try:
-                    dbgmsg('sending request %d to device %s' % (ntries, id))
-                    DEVICE_TYPE.requestpacket(self, id)
-                    dbgmsg('waiting for data from device %s' % id)
-                    self._read(packet_format);
+                    dbgmsg('sending request %d to device %s' % (ntries, did))
+                    DEVICE_TYPE.requestpacket(self, did)
+                    dbgmsg('waiting for data from device %s' % did)
+                    self._read(packet_format)
                     havedata = True
                 except ReadError, e:
                     dbgmsg('read failed: %s' % e.msg)
                 except KeyboardInterrupt, e:
                     raise e
                 except Exception, e:
-                    dbgmsg('failed request %d of %d for device %s' % (ntries, POLL_RETRIES, id))
+                    dbgmsg('failed request %d of %d for device %s' % (ntries, POLL_RETRIES, did))
                     errmsg(e)
                     if LOGLEVEL >= LOG_DEBUG:
                         traceback.print_exc()
             if not havedata:
-                wrnmsg('%d requests failed for device %s' % (POLL_RETRIES, id))
+                wrnmsg('%d requests failed for device %s' % (POLL_RETRIES, did))
 
 
 class SerialCollector(BufferedDataCollector):
@@ -2162,22 +2231,21 @@ class PollingSerialCollector(SerialCollector):
         finally:
             self.close()
 
-    def send(self, str):
-        dbgmsg('SERIAL: sending %s' % str)
-        self._conn.write(str)
+    def send(self, s):
+        dbgmsg('SERIAL: sending %s' % s)
+        self._conn.write(s)
 
     def recv(self, sz=SERIAL_BUFFER_SIZE):
-        resp = ''
         try:
             dbgmsg('SERIAL: waiting for %d bytes' % sz)
             resp = self._conn.read(sz)
             while len(resp) < sz:
-                dbgmsg('SERIAL: waiting for %d bytes' % (sz-len(resp)))
+                dbgmsg('SERIAL: waiting for %d bytes' % (sz - len(resp)))
                 resp += self._conn.read(sz - len(resp))
+            return resp
         except Exception, e:
             dbgmsg('SERIAL: exception while receiving')
             raise e
-        return resp
 
 
 # the blocking collector opens a serial connection then blocks for any data
@@ -2240,7 +2308,7 @@ class PollingSocketClientCollector(SocketClientCollector):
         try:
             self.open()
             self._pollingread(packet_format, DEVICE_LIST)
-        except socket.timeout, e:
+        except socket.timeout:
             dbgmsg('SOCKET: timeout while connecting')
         except socket.error, e:
             if e.errno == errno.EHOSTUNREACH:
@@ -2248,9 +2316,9 @@ class PollingSocketClientCollector(SocketClientCollector):
         finally:
             self.close()
 
-    def send(self, str):
-        dbgmsg('SOCKET: sending %s' % str)
-        self._sock.sendall(str)
+    def send(self, s):
+        dbgmsg('SOCKET: sending %s' % s)
+        self._sock.sendall(s)
 
     def recv(self, sz=IP_BUFFER_SIZE):
         resp = ''
@@ -2258,7 +2326,7 @@ class PollingSocketClientCollector(SocketClientCollector):
             dbgmsg('waiting for %d bytes' % sz)
             resp = self._sock.recv(sz)
             while len(resp) < sz:
-                dbgmsg('SOCKET: waiting for %d bytes' % (sz-len(resp)))
+                dbgmsg('SOCKET: waiting for %d bytes' % (sz - len(resp)))
                 resp += self._sock.recv(sz - len(resp))
         except socket.timeout, e:
             dbgmsg('SOCKET: timeout while receiving')
@@ -2303,7 +2371,7 @@ class SocketServerCollector(BufferedDataCollector):
         try:
             dbgmsg('SOCKET: waiting for connection')
             self._conn, addr = self._sock.accept()
-            self._blockingread(packet_format);
+            self._blockingread(packet_format)
         finally:
             if self._conn:
                 dbgmsg('SOCKET: closing connection')
@@ -2317,7 +2385,7 @@ class SocketServerCollector(BufferedDataCollector):
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        except: # REUSEPORT may not be supported on all systems  
+        except Exception: # REUSEPORT may not be supported on all systems
             pass
         self._sock.bind((self._host, self._port))
         self._sock.listen(1)
@@ -2347,8 +2415,8 @@ class DatabaseCollector(BufferedDataCollector):
     def setup(self):
         cursor = self._conn.cursor()
         cursor.execute('select max(time_created) from ' + self._table)
-        if cursor.rowcount == 1:
-            row = cursor.fetchone()
+        row = cursor.fetchone()
+        if row:
             dbgmsg('DB: latest record has time_created of %d' % row[0])
             self._lastread = row[0]
         cursor.close()
@@ -2364,13 +2432,15 @@ class DatabaseCollector(BufferedDataCollector):
         time.sleep(self._poll_interval)
         packets = []
         cursor = self._getdictcursor()
+        # FIXME: order by time_created just to be safe?
         cursor.execute('select * from ' + self._table + ' where time_created > ' + str(self._lastread))
-        dictrows = [dict(row) for row in cursor]
-        cursor.close()
-        dbgmsg('DB: found %d rows since %d' % (len(dictrows),self._lastread))
-        for row in dictrows:
+        while True:
+            row = cursor.fetchone()
+            if row == None:
+                break
             packets.append(SCHEMA.db2pkt(row))
             self._lastread = max(self._lastread, row['time_created'])
+        cursor.close()
         for p in packets:
             self.packet_buffer.insert(p['time_created'], p)
 
@@ -2382,9 +2452,9 @@ class MySQLCollector(DatabaseCollector):
             sys.exit(1)
 
         super(MySQLCollector, self).__init__(database+'.'+table, poll_interval)
-        self._host     = host
-        self._user     = user
-        self._passwd   = password
+        self._host = host
+        self._user = user
+        self._passwd = password
         self._database = database
         infmsg('MYSQL: host: %s' % self._host)
         infmsg('MYSQL: username: %s' % self._user)
@@ -2427,7 +2497,7 @@ class SqliteCollector(DatabaseCollector):
 
 
 class RRDCollector(BufferedDataCollector):
-    def __init__(self, dir, step, poll_interval):
+    def __init__(self, path, step, poll_interval):
         if not rrdtool:
             print 'RRD Error: rrdtool module could not be imported.'
             sys.exit(1)
@@ -2435,7 +2505,7 @@ class RRDCollector(BufferedDataCollector):
         super(RRDCollector, self).__init__()
         self._poll_interval = int(poll_interval)
         self._lastread = 0
-        self._dir = dir
+        self._dir = path
         self._step = step
         infmsg('RRD: polling interval: %d seconds' % self._poll_interval)
         infmsg('RRD: dir: %s' % self._dir)
@@ -2460,21 +2530,22 @@ class RRDCollector(BufferedDataCollector):
         for p in packets:
             self.packet_buffer.insert(p['time_created'], p)
 
-    def read_files(self, serial, s, e):
+    def read_files(self, sn, s, e):
         packets = []
         for x in PACKET_FORMAT.channels(FILTER_DB_SCHEMA_COUNTERS):
-            data = self.read_rrd(serial, x, s, e)
-        ts = [ i for i in range(s, e, step) ]
+            data = self.read_rrd(sn, x, s, e)
+        ts = [i for i in range(s, e, step)]
+        return packets # FIXME: not implemented properly
 
-    def read_rrd(self, serial, channel, s, e):
-        fn = mkfn(self._dir, mklabel(serial, channel))
+    def read_rrd(self, sn, channel, s, e):
+        fn = mkfn(self._dir, mklabel(sn, channel))
         return rrdtool.fetch(fn, 'AVERAGE', '--start', str(s), '--end', str(e))
 
 
 # Buffer Classes
 
 class MovingBuffer(object):
-    '''Maintain fixed-size buffer of data.  Oldest packets are removed.'''
+    """Maintain fixed-size buffer of data.  Oldest packets are removed."""
     def __init__(self, maxsize):
         self.maxsize = maxsize
         self.packets = []
@@ -2486,12 +2557,12 @@ class MovingBuffer(object):
             del(self.packets[0])
 
     def newest(self, timestamp):
-        '''return all packets with timestamp newer than specified timestamp'''
+        """return all packets with timestamp newer than specified timestamp"""
         idx = bisect.bisect(self.packets, (timestamp, {}))
         return self.packets[idx:]
 
     def oldest(self):
-        '''return the oldest packet in the buffer'''
+        """return the oldest packet in the buffer"""
         return self.packets[0]
 
     def size(self):
@@ -2499,14 +2570,14 @@ class MovingBuffer(object):
 
     def lastmod(self):
         if len(self.packets) > 0:
-            return self.packets[len(self.packets)-1][0]
+            return self.packets[len(self.packets) - 1][0]
         return 0
 
 class CompoundBuffer(object):
-    '''Variable number of moving buffers, each associated with an ID'''
+    """Variable number of moving buffers, each associated with an ID"""
     def __init__(self, maxsize):
         self.maxsize = maxsize
-        self.buffers = {}
+        self.buffers = dict()
         dbgmsg('buffer size: %d' % self.maxsize)
 
     def insert(self, timestamp, packet):
@@ -2538,12 +2609,12 @@ class CompoundBuffer(object):
 
 class BaseProcessor(object):
     def __init__(self):
-        self.last_processed = {}
+        self.last_processed = dict()
         self.process_period = 1 # in seconds
 
     def setup(self):
         pass
-		
+
     def process_compiled(self, packet_buffer):
         now = getgmtime()
         for sn in packet_buffer.getkeys():
@@ -2562,8 +2633,8 @@ class BaseProcessor(object):
                     for a,b in zip(data[0:], data[1:]):
                         try:
                             self.last_processed[sn] = b[0]
-                            packets.append(PACKET_FORMAT.calculate(b[1],a[1]))
-                        except ZeroDivisionError, zde:
+                            packets.append(PACKET_FORMAT.calculate(b[1], a[1]))
+                        except ZeroDivisionError:
                             infmsg("not enough data in buffer for %s" % sn)
                         except CounterResetError, cre:
                             wrnmsg("counter reset for %s: %s" % (sn, cre.msg))
@@ -2574,7 +2645,7 @@ class BaseProcessor(object):
                     continue
             else:
                 x = self.last_processed[sn] + self.process_period - now
-                dbgmsg('waiting %d seconds to process packets for %s' % (x,sn))
+                dbgmsg('waiting %d seconds to process packets for %s' % (x, sn))
 
     def process_calculated(self, packets):
         pass
@@ -2605,7 +2676,7 @@ class DatabaseProcessor(BaseProcessor):
 
     def process_calculated(self, packets):
         for p in packets:
-            valsql,nval,sn,ts = SCHEMA.getinsertsql(p)
+            valsql, nval, sn, ts = SCHEMA.getinsertsql(p)
             sql = []
             sql.append('INSERT INTO %s ' % self.db_table)
             sql.append(valsql)
@@ -2624,11 +2695,11 @@ class MySQLClient(object):
             sys.exit(1)
 
         self.conn = None
-        self.db_host     = host
-        self.db_user     = user
-        self.db_passwd   = passwd
+        self.db_host = host
+        self.db_user = user
+        self.db_passwd = passwd
         self.db_database = database
-        self.db_table    = self.db_database + '.' + table
+        self.db_table = self.db_database + '.' + table
 
         infmsg('MYSQL: host: %s' % self.db_host)
         infmsg('MYSQL: username: %s' % self.db_user)
@@ -2728,8 +2799,9 @@ class SqliteClient(object):
             print 'Sqlite Error: no database file specified'
             sys.exit(1)
 
-        self.db_filename  = filename
+        self.db_filename = filename
         self.db_table = table
+        self.conn = None
         infmsg('SQLITE: file: %s' % self.db_filename)
         infmsg('SQLITE: table: %s' % self.db_table)
 
@@ -2771,7 +2843,7 @@ class SqliteConfigurator(SqliteClient):
             row = cursor.fetchone()
             cursor.close()
 
-            if not row == None:
+            if row is not None:
                 return
 
             infmsg('SQLITE: creating table %s' % self.db_table)
@@ -2786,14 +2858,14 @@ class SqliteConfigurator(SqliteClient):
 
 
 class RRDProcessor(BaseProcessor):
-    def __init__(self, dir, step, heartbeat, period):
+    def __init__(self, path, step, heartbeat, period):
         if not rrdtool:
             print 'RRD Error: rrdtool module could not be imported.'
             sys.exit(1)
 
         super(RRDProcessor, self).__init__()
         self.process_period = int(period)
-        self._dir = dir
+        self._dir = path
         self._step = step
         self._heartbeat = heartbeat
         infmsg('RRD: update period: %d' % self.process_period)
@@ -2818,23 +2890,23 @@ class RRDProcessor(BaseProcessor):
         label = mklabel(packet['serial'], channel)
         fn = mkfn(self._dir, label)
         infmsg('RRD: creating rrd file %s' % fn)
-        rc = rrdtool.\
-            create(fn,
-                   '--step', str(self._step),
-                   '--start', str(ts),
-                   [ "DS:%s:%s:%d:U:U" % (channel, dstype, self._heartbeat) ],
-                   "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[0],RRD_RESOLUTIONS[0]),
-                   "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[1],RRD_RESOLUTIONS[1]),
-                   "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[2],RRD_RESOLUTIONS[2]),
-                   "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[3],RRD_RESOLUTIONS[3]),
-                   "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[0],RRD_RESOLUTIONS[0]),
-                   "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[1],RRD_RESOLUTIONS[1]),
-                   "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[2],RRD_RESOLUTIONS[2]),
-                   "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[3],RRD_RESOLUTIONS[3]),
-                   "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[0],RRD_RESOLUTIONS[0]),
-                   "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[1],RRD_RESOLUTIONS[1]),
-                   "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[2],RRD_RESOLUTIONS[2]),
-                   "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[3],RRD_RESOLUTIONS[3]))
+        rc = rrdtool.create(
+            fn,
+            '--step', str(self._step),
+            '--start', str(ts),
+            ["DS:%s:%s:%d:U:U" % (channel, dstype, self._heartbeat)],
+            "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[0], RRD_RESOLUTIONS[0]),
+            "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[1], RRD_RESOLUTIONS[1]),
+            "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[2], RRD_RESOLUTIONS[2]),
+            "RRA:AVERAGE:0.5:%d:%d" % (RRD_STEPS[3], RRD_RESOLUTIONS[3]),
+            "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[0], RRD_RESOLUTIONS[0]),
+            "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[1], RRD_RESOLUTIONS[1]),
+            "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[2], RRD_RESOLUTIONS[2]),
+            "RRA:MAX:0.5:%d:%d" % (RRD_STEPS[3], RRD_RESOLUTIONS[3]),
+            "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[0], RRD_RESOLUTIONS[0]),
+            "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[1], RRD_RESOLUTIONS[1]),
+            "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[2], RRD_RESOLUTIONS[2]),
+            "RRA:MIN:0.5:%d:%d" % (RRD_STEPS[3], RRD_RESOLUTIONS[3]))
         if rc:
             wrnmsg("RRD: failed to create '%s': %d" % (fn, rc))
 
@@ -2847,13 +2919,13 @@ class RRDProcessor(BaseProcessor):
 
     def _getvalues(self, ts, value, dstype):
         if dstype == 'GAUGE':
-            str = '%d:%f' % (ts, value)
+            s = '%d:%f' % (ts, value)
         else:
-            str = '%d:%d' % (ts, value)
-        return str
+            s = '%d:%d' % (ts, value)
+        return s
 
     def _update_files(self, packets):
-        values = {}
+        values = dict()
         for p in packets:
             for x in PACKET_FORMAT.channels(FILTER_DB_SCHEMA_COUNTERS):
                 label = mklabel(p['serial'], x)
@@ -2882,7 +2954,7 @@ class RRDProcessor(BaseProcessor):
     def _process_latest(self, packets):
         # process latest packet - assumes rrd update period is same as step
         if len(packets) > 0:
-            self._update_files([packets[len(packets)-1]])
+            self._update_files([packets[len(packets) - 1]])
 
     def _process_all(self, packets):
         # process each packet - assumes device emits at same frequency as step
@@ -2902,7 +2974,7 @@ class UploadProcessor(BaseProcessor):
         super(UploadProcessor, self).__init__()
         self.process_period = DEFAULT_UPLOAD_PERIOD
         self.timeout = DEFAULT_UPLOAD_TIMEOUT
-        self.urlopener = {}
+        self.urlopener = None
         pass
 
     def setup(self):
@@ -2948,18 +3020,19 @@ class UploadProcessor(BaseProcessor):
     def _handle_urlopen_error(self, e, url, data):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:  ' + url,
-                        '\n  data: ' + data,]))
+                        '\n  data: ' + data]))
 
 
 class WattzOnProcessor(UploadProcessor):
-    def __init__(self, api_key, user, passwd, map, period, timeout):
+    def __init__(self, api_key, user, passwd, map_str, period, timeout):
         super(WattzOnProcessor, self).__init__()
-        self.api_key  = api_key
+        self.api_key = api_key
         self.username = user
         self.password = passwd
-        self.map_str  = map
+        self.map_str = map_str
         self.process_period = int(period)
         self.timeout = int(timeout)
+        self.map = dict()
 
         infmsg('WO: upload period: %d' % self.process_period)
         infmsg('WO: url: %s' % WATTZON_API_URL)
@@ -2979,12 +3052,10 @@ class WattzOnProcessor(UploadProcessor):
             if not self.map_str:
                 print '  No mapping between channels and WattzOn meters'
             sys.exit(1)
-
         self.map = pairs2dict(self.map_str)
         if not self.map:
             print 'WattzOn Error: cannot determine channel-meter map'
             sys.exit(1)
-
         p = urllib2.HTTPPasswordMgrWithDefaultRealm()
         p.add_password('WattzOn', WATTZON_API_URL, self.username,self.password)
         auth = urllib2.HTTPBasicAuthHandler(p)
@@ -3008,28 +3079,22 @@ class WattzOnProcessor(UploadProcessor):
                             '\n  URL:      ' + e.geturl(),
                             '\n  username: ' + self.username,
                             '\n  password: ' + self.password,
-                            '\n  API key:  ' + self.api_key,]))
+                            '\n  API key:  ' + self.api_key]))
             return True
         return super(WattzOnProcessor, self).handle(e)
 
     def _make_call(self, meter, timestamp, magnitude):
-        data = {
-            'updates': [
-                {
+        data = {'updates': [{
                     'timestamp': timestamp,
                     'power': {
                         'magnitude': int(magnitude), # truncated by WattzOn API
-                        'unit':	'W',
-                        }
-                    },
-                ]
-            }
+                        'unit': 'W'}}]
+                }
         url = '%s/user/%s/powermeter/%s/upload.json?key=%s' % (
             WATTZON_API_URL,
             self.username,
             urllib.quote(meter),
-            self.api_key
-            )
+            self.api_key)
         req = self._create_request(url)
         return self.urlopener.open(req, json.dumps(data), self.timeout)
 
@@ -3040,14 +3105,15 @@ class WattzOnProcessor(UploadProcessor):
 
 
 class PlotWattProcessor(UploadProcessor):
-    def __init__(self, api_key, house_id, map, period, timeout):
+    def __init__(self, api_key, house_id, map_str, period, timeout):
         super(PlotWattProcessor, self).__init__()
-        self.api_key  = api_key
+        self.api_key = api_key
         self.house_id = house_id
-        self.map_str  = map
+        self.map_str = map_str
         self.url = PLOTWATT_BASE_URL + PLOTWATT_UPLOAD_URL
         self.process_period = int(period)
         self.timeout = int(timeout)
+        self.map = dict()
 
         infmsg('PW: upload period: %d' % self.process_period)
         infmsg('PW: url: %s' % self.url)
@@ -3065,7 +3131,6 @@ class PlotWattProcessor(UploadProcessor):
             if not self.map_str:
                 print '  No mapping between channels and PlotWatt meters'
             sys.exit(1)
-
         self.map = pairs2dict(self.map_str)
         if not self.map:
             print 'PlotWatt Error: cannot determine channel-meter map'
@@ -3090,7 +3155,7 @@ class PlotWattProcessor(UploadProcessor):
                         '\n  URL:      ' + url,
                         '\n  API key:  ' + self.api_key,
                         '\n  house ID: ' + self.house_id,
-                        '\n  data:     ' + payload,]))
+                        '\n  data:     ' + payload]))
 
     def _create_request(self, url):
         req = super(PlotWattProcessor, self)._create_request(url)
@@ -3106,13 +3171,14 @@ class PlotWattProcessor(UploadProcessor):
 # the energy measurements must be sorted by timestamp from oldest to newest,
 # and the value of the energy reading is a cumulative measurement of energy.
 class EnerSaveProcessor(UploadProcessor):
-    def __init__(self, url, token, map, period, timeout):
+    def __init__(self, url, token, map_str, period, timeout):
         super(EnerSaveProcessor, self).__init__()
-        self.url     = url
-        self.token   = token
-        self.map_str = map
+        self.url = url
+        self.token = token
+        self.map_str = map_str
         self.process_period = int(period)
         self.timeout = int(timeout)
+        self.map = dict()
 
         infmsg('ES: upload period: %d' % self.process_period)
         infmsg('ES: url: %s' % self.url)
@@ -3127,19 +3193,19 @@ class EnerSaveProcessor(UploadProcessor):
             if not self.token:
                 print '  No token'
             sys.exit(1)
-
         self.map = self.tuples2dict(self.map_str)
 
-    def tuples2dict(self, s):
+    @staticmethod
+    def tuples2dict(s):
         items = s.split(',')
-        m = {}
-        for k,d,t in zip(items[::3], items[1::3], items[2::3]):
-            m[k] = { 'desc':d, 'type':t }
+        m = dict()
+        for k, d, t in zip(items[::3], items[1::3], items[2::3]):
+            m[k] = {'desc': d, 'type': t}
         return m
 
     def process_calculated(self, packets):
-        sensors = {}
-        readings = {}
+        sensors = dict()
+        readings = dict()
         for p in packets:
             if self.map:
                 for c in PACKET_FORMAT.channels(FILTER_PE_LABELS):
@@ -3149,21 +3215,22 @@ class EnerSaveProcessor(UploadProcessor):
                         dev_id = mklabel(obfuscate_serial(p['serial']), c)
                         dev_type = tpl['type'] or ES_DEFAULT_TYPE
                         dev_desc = tpl['desc'] or c
-                        sensors[dev_id] = { 'type':dev_type, 'desc':dev_desc }
+                        sensors[dev_id] = {'type': dev_type, 'desc': dev_desc}
                         if not dev_id in readings:
                             readings[dev_id] = []
-                            readings[dev_id].append('<energy time="%d" wh="%f"/>' %
-                                                    (p['time_created'], p[c+'_wh']))
+                        readings[dev_id].append(
+                            '<energy time="%d" wh="%f"/>' %
+                            (p['time_created'], p[c+'_wh']))
             else:
                 for c in PACKET_FORMAT.channels(FILTER_PE_LABELS):
                     dev_id = mklabel(obfuscate_serial(p['serial']), c)
                     dev_type = ES_DEFAULT_TYPE
                     dev_desc = c
-                    sensors[dev_id] = { 'type':dev_type, 'desc':dev_desc }
+                    sensors[dev_id] = {'type': dev_type, 'desc': dev_desc}
                     if not dev_id in readings:
                         readings[dev_id] = []
-                        readings[dev_id].append('<energy time="%d" wh="%f"/>' %
-                                                (p['time_created'], p[c+'_wh']))
+                    readings[dev_id].append('<energy time="%d" wh="%f"/>' %
+                                            (p['time_created'], p[c+'_wh']))
         s = []
         for key in sensors:
             s.append('<sensor id="%s" type="%s" description="%s">' %
@@ -3181,12 +3248,105 @@ class EnerSaveProcessor(UploadProcessor):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:   ' + url,
                         '\n  token: ' + self.token,
-                        '\n  data:  ' + payload,]))
+                        '\n  data:  ' + payload]))
 
     def _create_request(self, url):
         req = super(EnerSaveProcessor, self)._create_request(url)
         req.add_header("Content-Type", "application/xml")
         req.add_header("Token", self.token)
+        return req
+
+
+# format for the Bidgely uploads is based on the pdf document called
+# 'Bidgely Developer API v1.0.1' from 5/27/13.
+#
+# the energy measurements must be sorted by timestamp from oldest to newest,
+# and the value of the energy reading is a cumulative measurement of energy.
+class BidgelyProcessor(UploadProcessor):
+    def __init__(self, url, map_str, period, timeout):
+        super(BidgelyProcessor, self).__init__()
+        self.url = url
+        self.map_str = map_str
+        self.process_period = int(period)
+        self.timeout = int(timeout)
+        self.map = dict()
+
+        infmsg('BY: upload period: %d' % self.process_period)
+        infmsg('BY: url: %s' % self.url)
+        infmsg('BY: map: %s' % self.map_str)
+
+    def setup(self):
+        if not (self.url and self.map_str):
+            print 'Bidgely Error: Insufficient parameters'
+            if not self.url:
+                print '  No URL'
+            if not self.map_str:
+                print '  No Map'
+            sys.exit(1)
+        self.map = self.tuples2dict(self.map_str)
+
+    @staticmethod
+    def tuples2dict(s):
+        items = s.split(',')
+        m = dict()
+        for k, d, t in zip(items[::3], items[1::3], items[2::3]):
+            m[k] = {'desc': d, 'type': t}
+        return m
+
+    def process_calculated(self, packets):
+        sensors = dict()
+        wh_readings = dict()
+        w_readings = dict()
+        for p in packets:
+            for c in PACKET_FORMAT.channels(FILTER_PE_LABELS):
+                key = mklabel(p['serial'], c)
+                if key in self.map:
+                    tpl = self.map[key]
+                    dev_id = mklabel(obfuscate_serial(p['serial']), c)
+                    dev_type = tpl['type'] or BY_DEFAULT_TYPE
+                    dev_desc = tpl['desc'] or dev_id
+                    sensors[dev_id] = {'type': dev_type, 'desc': dev_desc}
+                    if not dev_id in wh_readings:
+                        wh_readings[dev_id] = []
+                    wh_readings[dev_id].append('<data time="%d" value="%f"/>' %
+                                               (p['time_created'], p[c+'_wh']))
+                    if not dev_id in w_readings:
+                        w_readings[dev_id] = []
+                    w_readings[dev_id].append('<data time="%d" value="%f"/>' %
+                                              (p['time_created'], p[c+'_w']))
+        s = []
+        for key in sensors:
+            # FIXME different ID for generation
+            s.append('<meter id="%s" model="Brultech" type="%s" description="%s">' %
+                     (key, sensors[key]['type'], sensors[key]['desc']))
+            s.append('<streams>')
+            s.append('<stream id="CurrentSummationDelivered" unit="Wh" description="%s">' %
+                     (sensors[key]['desc']))
+            s.append(''.join(wh_readings[key]))
+            s.append('</stream>')
+            s.append('<stream id="InstantaneousDemand" unit="W" description="%s">' %
+                     (sensors[key]['desc']))
+            s.append(''.join(w_readings[key]))
+            s.append('</stream>')
+            s.append('</streams>')
+            s.append('</meter>')
+        if len(s):
+            s.insert(0, '<?xml version="1.0" encoding="UTF-8" ?>')
+            s.insert(1, '<upload version="1.0">')
+            s.insert(2, '<meters>')
+            s.append('</meters>')
+            s.append('</upload>')
+            self._urlopen(self.url, ''.join(s))
+            # FIXME: check for server response
+
+    def _handle_urlopen_error(self, e, url, payload):
+        errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
+                        '\n  URL:   ' + url,
+                        '\n  data:  ' + payload]))
+
+    def _create_request(self, url):
+        req = super(BidgelyProcessor, self)._create_request(url)
+        req.add_header("Content-Type", "application/xml")
         return req
 
 
@@ -3196,20 +3356,18 @@ class EnerSaveProcessor(UploadProcessor):
 # the peoplepower documentation does not indicate whether energy readings
 # are cumulative or delta.  this implementation uses cumulative.
 class PeoplePowerProcessor(UploadProcessor):
-    def __init__(self, url, token, hub_id, map, period, timeout, add_devices):
+    def __init__(self, url, token, hub_id, map_str, period, timeout, add_devices):
         super(PeoplePowerProcessor, self).__init__()
-        self.url      = url
-        self.token    = token
-        self.hub_id   = hub_id
-        self.map_str  = map
-        self.nonce    = PPCO_FIRST_NONCE
+        self.url = url
+        self.token = token
+        self.hub_id = hub_id
+        self.map_str = map_str
+        self.nonce = PPCO_FIRST_NONCE
         self.dev_type = PPCO_DEVICE_TYPE
         self.process_period = int(period)
         self.timeout = int(timeout)
-        if add_devices == None:
-            self.do_add_devices = PPCO_ADD_DEVICES
-        else:
-            self.do_add_devices = add_devices
+        self.do_add_devices = PPCO_ADD_DEVICES if add_devices is None else add_devices
+        self.map = dict()
 
         infmsg('PP: upload period: %d' % self.process_period)
         infmsg('PP: url: %s' % self.url)
@@ -3230,13 +3388,11 @@ class PeoplePowerProcessor(UploadProcessor):
             if not self.map_str:
                 print '  No mapping between channels and PeoplePower devices'
             sys.exit(1)
-
         self.map = pairs2dict(self.map_str)
         if not self.map:
             print 'PeoplePower Error: cannot determine channel-meter map'
             sys.exit(1)
-
-        if self.do_add_devices == True:
+        if self.do_add_devices:
             self.add_devices()
 
     def process_calculated(self, packets):
@@ -3285,7 +3441,7 @@ class PeoplePowerProcessor(UploadProcessor):
                         '\n  URL:    ' + url,
                         '\n  token:  ' + self.token,
                         '\n  hub ID: ' + self.hub_id,
-                        '\n  data:   ' + payload,]))
+                        '\n  data:   ' + payload]))
 
     def _create_request(self, url):
         req = super(PeoplePowerProcessor, self)._create_request(url)
@@ -3297,9 +3453,9 @@ class PeoplePowerProcessor(UploadProcessor):
 class EragyProcessor(UploadProcessor):
     def __init__(self, url, gateway_id, token, period, timeout):
         super(EragyProcessor, self).__init__()
-        self.url        = url
+        self.url = url
         self.gateway_id = gateway_id
-        self.token      = token
+        self.token = token
         self.process_period = int(period)
         self.timeout = int(timeout)
 
@@ -3322,7 +3478,7 @@ class EragyProcessor(UploadProcessor):
     def process_calculated(self, packets):
         s = []
         for p in packets:
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
                 key = mklabel(obfuscate_serial(p['serial']), c)
                 s.append('<MTU ID="%s"><cumulative timestamp="%s" watts="%.2f"/></MTU>' % (key,p['time_created'],p[c+'_w']))
         if len(s):
@@ -3339,7 +3495,7 @@ class EragyProcessor(UploadProcessor):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:   ' + url,
                         '\n  token: ' + self.token,
-                        '\n  data:  ' + payload,]))
+                        '\n  data:  ' + payload]))
 
     def _create_request(self, url):
         req = super(EragyProcessor, self)._create_request(url)
@@ -3350,13 +3506,14 @@ class EragyProcessor(UploadProcessor):
 # smart energy groups expects delta measurements for both power and energy.
 # this is not a cumulative energy reading!
 class SmartEnergyGroupsProcessor(UploadProcessor):
-    def __init__(self, url, token, map, period, timeout):
+    def __init__(self, url, token, map_str, period, timeout):
         super(SmartEnergyGroupsProcessor, self).__init__()
-        self.url      = url
-        self.token    = token
-        self.map_str  = map
+        self.url = url
+        self.token = token
+        self.map_str = map_str
         self.process_period = int(period)
         self.timeout = int(timeout)
+        self.map = dict()
 
         infmsg('SEG: upload period: %d' % self.process_period)
         infmsg('SEG: url: %s' % self.url)
@@ -3371,7 +3528,6 @@ class SmartEnergyGroupsProcessor(UploadProcessor):
             if not self.token:
                 print '  No token'
             sys.exit(1)
-
         self.map = pairs2dict(self.map_str.lower())
         self.urlopener = urllib2.build_opener(urllib2.HTTPHandler)
 
@@ -3380,33 +3536,33 @@ class SmartEnergyGroupsProcessor(UploadProcessor):
         for p in packets:
             s = []
             if self.map:
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
                     key = mklabel(p['serial'], c) # str(idx+1)
                     if key in self.map:
                         meter = self.map[key] or c
-                        s.append('(p_%s %.2f)' % (meter,p[c+'_w']))
-                        s.append('(e_%s %.5f)' % (meter,p[c+'_dwh']))
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
+                        s.append('(p_%s %.2f)' % (meter, p[c+'_w']))
+                        s.append('(e_%s %.5f)' % (meter, p[c+'_dwh']))
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
                     key = mklabel(p['serial'], c) # str(idx+1)
                     if key in self.map:
                         meter = self.map[key] or c
                         s.append('(n_%s %d)' % (meter,p[c]))
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
                     key = mklabel(p['serial'], c) # str(idx+1)
                     if key in self.map:
                         meter = self.map[key] or c
-                        s.append('(temperature_%s %.2f)' % (meter,p[c]))
+                        s.append('(temperature_%s %.2f)' % (meter, p[c]))
             else:
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
                     meter = c # str(idx+1)
-                    s.append('(p_%s %.2f)' % (meter,p[c+'_w']))
-                    s.append('(e_%s %.5f)' % (meter,p[c+'_dwh']))
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
+                    s.append('(p_%s %.2f)' % (meter, p[c+'_w']))
+                    s.append('(e_%s %.5f)' % (meter, p[c+'_dwh']))
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
                     meter = c # str(idx+1)
                     s.append('(n_%s %d)' % (meter,p[c]))
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
                     meter = c # str(idx+1)
-                    s.append('(temperature_%s %.2f)' % (meter,p[c]))
+                    s.append('(temperature_%s %.2f)' % (meter, p[c]))
             if len(s):
                 ts = mkts(p['time_created'])
                 node = obfuscate_serial(p['serial'])
@@ -3427,7 +3583,7 @@ class SmartEnergyGroupsProcessor(UploadProcessor):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:   ' + url,
                         '\n  token: ' + self.token,
-                        '\n  data:  ' + payload,]))
+                        '\n  data:  ' + payload]))
 
     def _create_request(self, url):
         req = super(SmartEnergyGroupsProcessor, self)._create_request(url)
@@ -3443,6 +3599,8 @@ class ThingSpeakProcessor(UploadProcessor):
         self.fields_str = fields
         self.process_period = int(period)
         self.timeout = int(timeout)
+        self.tokens = dict()
+        self.fields = dict()
 
         infmsg('TS: upload period: %d' % self.process_period)
         infmsg('TS: url: %s' % self.url)
@@ -3457,7 +3615,6 @@ class ThingSpeakProcessor(UploadProcessor):
             if not self.tokens_str:
                 print '  No tokens'
             sys.exit(1)
-
         self.tokens = pairs2dict(self.tokens_str)
         self.fields = pairs2dict(self.fields_str)
 
@@ -3467,7 +3624,7 @@ class ThingSpeakProcessor(UploadProcessor):
             if ecm_serial in self.tokens:
                 token = self.tokens[ecm_serial]
                 s = []
-                for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+                for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
                     key = mklabel(ecm_serial, c)
                     if not self.fields:
                         s.append('&field%d=%.2f' % (idx+1, p[c+'_w']))
@@ -3490,9 +3647,9 @@ class ThingSpeakProcessor(UploadProcessor):
 class PachubeProcessor(UploadProcessor):
     def __init__(self, url, token, feed, period, timeout):
         super(PachubeProcessor, self).__init__()
-        self.url     = url
-        self.token   = token
-        self.feed    = feed
+        self.url = url
+        self.token = token
+        self.feed = feed
         self.process_period = int(period)
         self.timeout = int(timeout)
 
@@ -3513,33 +3670,30 @@ class PachubeProcessor(UploadProcessor):
             sys.exit(1)
 
     def process_calculated(self, packets):
-        streams = {}
+        streams = dict()
         for p in packets:
             osn = obfuscate_serial(p['serial'])
             ts = mkts(p['time_created'])
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
                 dskey = mklabel(osn, c)
                 if not dskey in streams:
-                    streams[dskey] = {'id':dskey, 'datapoints':[]}
-                dp = {'at':ts, 'value':p[c+'_w']}
+                    streams[dskey] = {'id': dskey, 'datapoints': []}
+                dp = {'at': ts, 'value': p[c+'_w']}
                 streams[dskey]['datapoints'].append(dp)
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
                 dskey = mklabel(osn, c)
                 if not dskey in streams:
-                    streams[dskey] = {'id':dskey, 'datapoints':[]}
-                dp = {'at':ts, 'value':p[c]}
+                    streams[dskey] = {'id': dskey, 'datapoints': []}
+                dp = {'at': ts, 'value': p[c]}
                 streams[dskey]['datapoints'].append(dp)
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
                 dskey = mklabel(osn, c)
                 if not dskey in streams:
-                    streams[dskey] = {'id':dskey, 'datapoints':[]}
-                dp = {'at':ts, 'value':p[c]}
+                    streams[dskey] = {'id': dskey, 'datapoints': []}
+                dp = {'at': ts, 'value': p[c]}
                 streams[dskey]['datapoints'].append(dp)
         if len(streams.keys()) > 0:
-            data = {
-                'version':'1.0.0',
-                'datastreams':[]
-                }
+            data = {'version':'1.0.0', 'datastreams':[]}
             for key in streams.keys():
                 data['datastreams'].append(streams[key])
             url = '%s/%s' % (self.url, self.feed)
@@ -3556,14 +3710,15 @@ class PachubeProcessor(UploadProcessor):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:   ' + url,
                         '\n  token: ' + self.token,
-                        '\n  data:  ' + payload,]))
+                        '\n  data:  ' + payload]))
 
 
 class OpenEnergyMonitorProcessor(UploadProcessor):
-    def __init__(self, url, token, period, timeout):
+    def __init__(self, url, token, node, period, timeout):
         super(OpenEnergyMonitorProcessor, self).__init__()
-        self.url     = url
-        self.token   = token
+        self.url = url
+        self.token = token
+        self.node = node
         self.process_period = int(period)
         self.timeout = int(timeout)
 
@@ -3571,6 +3726,7 @@ class OpenEnergyMonitorProcessor(UploadProcessor):
         infmsg('OEM: timeout: %d' % self.timeout)
         infmsg('OEM: url: %s' % self.url)
         infmsg('OEM: token: %s' % self.token)
+        infmsg('OEM: node: %s' % self.node)
 
     def setup(self):
         if not (self.url and self.token):
@@ -3585,17 +3741,19 @@ class OpenEnergyMonitorProcessor(UploadProcessor):
         for p in packets:
             osn = obfuscate_serial(p['serial'])
             data = []
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
-                data.append('%s_w:%.2f' % (mklabel(osn,c), p[c+'_w']))
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
-                data.append('%s_wh:%.2f' % (mklabel(osn,c), p[c+'_wh']))
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
-                data.append('%s:%d' % (mklabel(osn,c), p[c]))
-            for idx,c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
-                data.append('%s:%.2f' % (mklabel(osn,c), p[c]))
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+                data.append('%s_w:%.2f' % (mklabel(osn, c), p[c+'_w']))
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PE_LABELS)):
+                data.append('%s_wh:%.2f' % (mklabel(osn, c), p[c+'_wh']))
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_PULSE)):
+                data.append('%s:%d' % (mklabel(osn, c), p[c]))
+            for idx, c in enumerate(PACKET_FORMAT.channels(FILTER_SENSOR)):
+                data.append('%s:%.2f' % (mklabel(osn, c), p[c]))
             if len(data):
-                url = '%s?apikey=%s&time=%s&json={%s}' % (
-                    self.url, self.token, p['time_created'], ','.join(data))
+                nstr = '' if self.node is None else '&node=%s' % self.node
+                url = '%s?apikey=%s&time=%s%s&json={%s}' % (
+                    self.url, self.token, p['time_created'], nstr,
+                    ','.join(data))
                 result = self._urlopen(url, '')
                 # FIXME: need error handling here
 
@@ -3607,35 +3765,41 @@ class OpenEnergyMonitorProcessor(UploadProcessor):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:   ' + url,
                         '\n  token: ' + self.token,
-                        '\n  data:  ' + payload,]))
+                        '\n  data:  ' + payload]))
 
 
 class WattvisionProcessor(UploadProcessor):
-    def __init__(self, url, house_id, secret_key, channelstr, period, timeout):
+    def __init__(self, url, api_id, api_key, sensor_id, channelstr, period, timeout):
         super(WattvisionProcessor, self).__init__()
         self.url = url
-        self.house_id = house_id
-        self.secret_key = secret_key
+        self.api_id = api_id
+        self.api_key = api_key
+        self.sensor_id = sensor_id
         self.channelstr = channelstr
         self.process_period = int(period)
         self.timeout = int(timeout)
+        self.serial = ''
+        self.channel = ''
 
         infmsg('WV: upload period: %d' % self.process_period)
         infmsg('WV: timeout: %d' % self.timeout)
         infmsg('WV: url: %s' % self.url)
-        infmsg('WV: house_id: %s' % self.house_id)
-        infmsg('WV: secret_key: %s' % self.secret_key)
+        infmsg('WV: api_id: %s' % self.api_id)
+        infmsg('WV: api_key: %s' % self.api_key)
+        infmsg('WV: sensor_id: %s' % self.sensor_id)
         infmsg('WV: channel: %s' % self.channelstr)
 
     def setup(self):
-        if not (self.url and self.house_id and self.secret_key and self.channelstr):
+        if not (self.url and self.api_id and self.api_key and self.sensor_id and self.channelstr):
             print 'Wattvision Error: Insufficient parameters'
             if not self.url:
                 print '  A URL is required'
-            if not self.house_id:
-                print '  A house ID is required'
-            if not self.secret_key:
-                print '  A secret key is required'
+            if not self.api_id:
+                print '  An API ID is required'
+            if not self.api_key:
+                print '  An API key is required'
+            if not self.sensor_id:
+                print '  A Sensor ID is required'
             if not self.channelstr:
                 print '  A channel is required'
             sys.exit(1)
@@ -3644,20 +3808,20 @@ class WattvisionProcessor(UploadProcessor):
             print 'bad format for channel.  expecting XXXXXX_chY'
             sys.exit(1)
         self.serial = self.channelstr[0:idx]
-        self.channel = self.channelstr[idx+1:]
+        self.channel = self.channelstr[idx + 1:]
 
     def process_calculated(self, packets):
         for p in packets:
             if p['serial'] == self.serial:
                 ts = mkts(p['time_created'])
-                data = {}
-                data['h'] = self.house_id
-                data['k'] = self.secret_key
-                data['v'] = WV_API_VERSION
-                data['watts'] = p[self.channel+'_w']
-                data['time'] = ts
-                data['wh_consumed'] = p[self.channel+'_dwh']
-                result = self._urlopen(self.url, urllib.urlencode(data))
+                data = {
+                    'sensor_id': self.sensor_id,
+                    'api_id': self.api_id,
+                    'api_key': self.api_key,
+                    'watts': p[self.channel+'_w'],
+                    'time': ts
+                    }
+                result = self._urlopen(self.url, json.dumps(data))
                 # FIXME: need error handling here
 
     def _create_request(self, url):
@@ -3668,9 +3832,10 @@ class WattvisionProcessor(UploadProcessor):
     def _handle_urlopen_error(self, e, url, payload):
         errmsg(''.join(['%s Error: %s' % (self.__class__.__name__, e),
                         '\n  URL:   ' + url,
-                        '\n  house_id: ' + self.house_id,
-                        '\n  secret_key: ' + self.secret_key,
-                        '\n  data:  ' + payload,]))
+                        '\n  api_id: ' + self.api_id,
+                        '\n  api_key: ' + self.api_key,
+                        '\n  sensor_id: ' + self.sensor_id,
+                        '\n  data:  ' + payload]))
 
 
 class PVOutputProcessor(UploadProcessor):
@@ -3715,16 +3880,14 @@ class PVOutputProcessor(UploadProcessor):
         [self.con_ch, self.con_serial] = self._split(self.con_str)
         [self.temp_ch, self.temp_serial] = self._split(self.temp_str)
 
-    def _split(self, str):
-        ch = None
+    def _split(self, s):
         sn = None
-        idx = str.find('_')
-        if idx == -1:
-            ch = str
-        else:
-            sn = str[0:idx]
-            ch = str[idx+1:]
-        return [ch,sn]
+        ch = s
+        idx = s.find('_')
+        if idx >= 0:
+            sn = s[0:idx]
+            ch = s[idx+1:]
+        return [ch, sn]
 
     def _havegen(self, sn):
         return self.gen_ch and (not self.gen_serial or self.gen_serial == sn)
@@ -3738,7 +3901,7 @@ class PVOutputProcessor(UploadProcessor):
     def process_calculated(self, packets):
         p = packets[len(packets)-1]
         if self._havegen(p['serial']) or self._havecon(p['serial']):
-            data = {}
+            data = dict()
             data['d'] = time.strftime('%Y%m%d', time.localtime(p['time_created']))
             data['t'] = time.strftime('%H:%M', time.localtime(p['time_created']))
             data['c1'] = 1
@@ -3766,7 +3929,7 @@ class PVOutputProcessor(UploadProcessor):
                         '\n  URL:   ' + url,
                         '\n  api_key: ' + self.api_key,
                         '\n  system_id: ' + self.system_id,
-                        '\n  data:  ' + payload,]))
+                        '\n  data:  ' + payload]))
             
 
 
@@ -3878,12 +4041,20 @@ if __name__ == '__main__':
     parser.add_option_group(group)
 
     group = optparse.OptionGroup(parser, 'EnerSave options')
-    group.add_option('--enersave', action='store_true', dest='enersave_out', default=False, help='upload data using EnerSave API')
+    group.add_option('--enersave', action='store_true', dest='enersave_out', default=False, help='upload data using EnerSave API (deprecated)')
     group.add_option('--es-token', help='token', metavar='TOKEN')
     group.add_option('--es-url', help='URL', metavar='URL')
     group.add_option('--es-map', help='channel-to-device mapping', metavar='MAP')
     group.add_option('--es-upload-period', help='upload period in seconds', metavar='PERIOD')
     group.add_option('--es-timeout', help='timeout period in seconds', metavar='TIMEOUT')
+    parser.add_option_group(group)
+
+    group = optparse.OptionGroup(parser, 'Bidgely options')
+    group.add_option('--bidgely', action='store_true', dest='bidgely_out', default=False, help='upload data using Bidgely API')
+    group.add_option('--by-url', help='URL', metavar='URL')
+    group.add_option('--by-map', help='channel-to-device mapping', metavar='MAP')
+    group.add_option('--by-upload-period', help='upload period in seconds', metavar='PERIOD')
+    group.add_option('--by-timeout', help='timeout period in seconds', metavar='TIMEOUT')
     parser.add_option_group(group)
 
     group = optparse.OptionGroup(parser, 'PeoplePower options')
@@ -3937,6 +4108,7 @@ if __name__ == '__main__':
     group.add_option('--oem', action='store_true', dest='oem_out', default=False, help='upload data using OpenEnergyMonitor API')
     group.add_option('--oem-url', help='URL', metavar='URL')
     group.add_option('--oem-token', help='token', metavar='TOKEN')
+    group.add_option('--oem-node', help='node', metavar='NODE')
     group.add_option('--oem-upload-period', help='upload period in seconds', metavar='PERIOD')
     group.add_option('--oem-timeout', help='timeout period in seconds', metavar='TIMEOUT')
     parser.add_option_group(group)
@@ -3944,8 +4116,9 @@ if __name__ == '__main__':
     group = optparse.OptionGroup(parser, 'Wattvision options')
     group.add_option('--wattvision', action='store_true', dest='wattvision_out', default=False, help='upload data using Wattvision API')
     group.add_option('--wv-url', help='URL', metavar='URL')
-    group.add_option('--wv-house-id', help='house id', metavar='ID')
-    group.add_option('--wv-secret-key', help='secret key', metavar='KEY')
+    group.add_option('--wv-api-id', help='api id', metavar='ID')
+    group.add_option('--wv-api-key', help='api key', metavar='KEY')
+    group.add_option('--wv-sensor-id', help='sensor id', metavar='SENSOR')
     group.add_option('--wv-channel', help='channel of device', metavar='XXXXXX_cY')
     group.add_option('--wv-upload-period', help='upload period in seconds', metavar='PERIOD')
     group.add_option('--wv-timeout', help='timeout period in seconds', metavar='TIMEOUT')
@@ -3980,7 +4153,7 @@ if __name__ == '__main__':
         try:
             config.read(options.configfile)
             for section in config.sections(): # section names do not matter
-                for name,value in config.items(section):
+                for name, value in config.items(section):
                     if not getattr(options, name):
                         setattr(options, name, cleanvalue(value))
         except AttributeError, e:
@@ -4098,8 +4271,8 @@ if __name__ == '__main__':
                                           options.serial_baud or SERIAL_BAUD)
 
     elif options.ip_read:
-        if options.ip_mode \
-          and not (options.ip_mode == 'client' or options.ip_mode == 'server'):
+        if (options.ip_mode and not
+            (options.ip_mode == 'client' or options.ip_mode == 'server')):
             print 'Unknown mode %s: use client or server' % options.ip_mode
             sys.exit(1)
 
@@ -4143,13 +4316,20 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # Packet Processor Setup
-    if not (options.print_out or options.mysql_out or options.sqlite_out or options.rrd_out or options.wattzon_out or options.plotwatt_out or options.enersave_out or options.peoplepower_out or options.eragy_out or options.smartenergygroups_out or options.thingspeak_out or options.pachube_out or options.oem_out or options.wattvision_out or options.pvo_out):
+    if not (options.print_out or options.mysql_out or options.sqlite_out or
+            options.rrd_out or options.wattzon_out or options.plotwatt_out or
+            options.enersave_out or options.bidgely_out or
+            options.peoplepower_out or options.eragy_out or
+            options.smartenergygroups_out or options.thingspeak_out or
+            options.pachube_out or options.oem_out or
+            options.wattvision_out or options.pvo_out):
         print 'Please specify one or more processing options (or \'-h\' for help):'
         print '  --print              print to screen'
         print '  --mysql              write to mysql database'
         print '  --sqlite             write to sqlite database'
         print '  --rrd                write to round-robin database'
-        print '  --enersave           upload to EnerSave'
+        print '  --bidgely            upload to Bidgely'
+        print '  --enersave           upload to EnerSave (deprecated)'
         print '  --eragy              upload to Eragy'
         print '  --oem                upload to OpenEnergyMonitor'
         print '  --pachube            upload to Pachube'
@@ -4208,6 +4388,12 @@ if __name__ == '__main__':
                       options.es_map or ES_MAP,
                       options.es_upload_period or ES_UPLOAD_PERIOD,
                       options.es_timeout or ES_TIMEOUT))
+    if options.bidgely_out:
+        procs.append(BidgelyProcessor
+                     (options.by_url or BY_URL,
+                      options.by_map or BY_MAP,
+                      options.by_upload_period or BY_UPLOAD_PERIOD,
+                      options.by_timeout or BY_TIMEOUT))
     if options.peoplepower_out:
         procs.append(PeoplePowerProcessor
                      (options.pp_url or PPCO_URL,
@@ -4249,13 +4435,15 @@ if __name__ == '__main__':
         procs.append(OpenEnergyMonitorProcessor
                      (options.oem_url or OEM_URL,
                       options.oem_token or OEM_TOKEN,
+                      options.oem_node or OEM_NODE,
                       options.oem_upload_period or OEM_UPLOAD_PERIOD,
                       options.oem_timeout or OEM_TIMEOUT))
     if options.wattvision_out:
         procs.append(WattvisionProcessor
                      (options.wv_url or WV_URL,
-                      options.wv_house_id or WV_HOUSE_ID,
-                      options.wv_secret_key or WV_SECRET_KEY,
+                      options.wv_api_id or WV_API_ID,
+                      options.wv_api_key or WV_API_KEY,
+                      options.wv_sensor_id or WV_SENSOR_ID,
                       options.wv_channel or WV_CHANNEL,
                       options.wv_upload_period or WV_UPLOAD_PERIOD,
                       options.wv_timeout or WV_TIMEOUT))
