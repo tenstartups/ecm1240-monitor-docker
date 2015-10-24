@@ -1,26 +1,28 @@
-# Pull base image.
-FROM debian:jessie
+#
+# Btmon ecm data collection and publishing service
+#
+# http://github.com/tenstartups/btmon-docker
+#
+
+FROM alpine:latest
 
 MAINTAINER Marc Lennox <marc.lennox@gmail.com>
 
-# Set environment.
-ENV DEBIAN_FRONTEND noninteractive
+# Set environment variables.
+ENV \
+  TERM=xterm-color
 
 # Install packages.
-RUN apt-get update
-RUN apt-get install -y curl mysql-client nano python python-mysqldb sqlite3 wget
+RUN \
+  apk --update add curl mysql-client nano python py-pip sqlite wget && \
+  rm -rf /var/cache/apk/*
 
-# Clean up APT when done.
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Define working directory.
-WORKDIR /opt/btmon
+# Install mysql python connector
+RUN pip install --allow-external mysql-connector-python
 
 # Add files to the container.
-ADD . /opt/btmon
-
-# Define volumes.
-VOLUME ["/etc/bind", "/var/lib/bind", "/var/run/named"]
+COPY entrypoint.sh /docker-entrypoint
+COPY btmon.py /usr/local/bin/btmon
 
 # Define the command script.
-CMD ["/bin/sh", "-c", "./btmon"]
+CMD ["/docker-entrypoint"]
