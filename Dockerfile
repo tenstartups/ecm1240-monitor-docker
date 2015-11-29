@@ -4,7 +4,7 @@
 # http://github.com/tenstartups/btmon-docker
 #
 
-FROM alpine:latest
+FROM tenstartups/alpine:latest
 
 MAINTAINER Marc Lennox <marc.lennox@gmail.com>
 
@@ -14,7 +14,7 @@ ENV \
 
 # Install packages.
 RUN \
-  apk --update add curl mysql-client nano python py-pip sqlite wget && \
+  apk --update add mysql-client python py-pip sqlite && \
   rm -rf /var/cache/apk/*
 
 # Install mysql python connector
